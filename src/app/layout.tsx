@@ -1,6 +1,7 @@
 // app/layout.tsx
 'use client';
 
+import "@/app/globals.css";
 import '@rainbow-me/rainbowkit/styles.css';
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { WagmiProvider, createConfig } from 'wagmi';
