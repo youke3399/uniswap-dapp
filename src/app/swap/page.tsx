@@ -1,27 +1,38 @@
 'use client';
 
-import { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
+import { useAccount, useBalance } from 'wagmi';
 import { Button } from '@/components/ui/button';
+import { availableTokens, useSwapStore } from '@/store/swapStore';
+import { Token } from '@uniswap/sdk-core';
+import { formatUnits } from 'viem';
 
 export default function SwapPage() {
     const { address, isConnected } = useAccount();
-    const [fromToken, setFromToken] = useState('ETH');
-    const [toToken, setToToken] = useState('USDC');
-    const [fromAmount, setFromAmount] = useState('');
-    const [toAmount, setToAmount] = useState('0');
-    const [price, setPrice] = useState('2000'); // Example price
-    const [balance, setBalance] = useState('1.5'); // Example balance
-    const [slippage, setSlippage] = useState('0.5');
-    const [gasFee, setGasFee] = useState('0.001');
+    const state = useSwapStore();
+    const { fromToken, toToken, slippage, gasFee, fromAmount, toAmount } = state;
+    const { setFromToken, setToToken, setFromAmount, setToAmount } = state;
+
+    // 获取出售代币余额
+    const { data: fromTokenBalance, isFetching: isFetchingFromBalance } = useBalance({
+        address,
+        token: fromToken?.address && fromToken.address !== '0x0000000000000000000000000000000000000000' ? fromToken.address as `0x${string}` : undefined,
+        query: { enabled: Boolean(address && fromToken?.address) },
+    });
+
+    // 获取购买代币余额
+    const { data: toTokenBalance, isFetching: isFetchingToBalance } = useBalance({
+        address,
+        token: toToken?.address && toToken.address !== '0x0000000000000000000000000000000000000000' ? toToken.address as `0x${string}` : undefined,
+        query: { enabled: Boolean(address && toToken?.address) },
+    });
 
     const handleSwap = () => {
         if (!isConnected) {
             alert('请先连接钱包');
         } else {
-            alert(`执行 Swap: ${fromAmount} ${fromToken} -> ${toToken}`);
-            // 这里调用实际 swap 函数
+            alert(`执行 Swap: ${fromAmount} ${fromToken?.symbol}(${fromToken?.address}) -> ${toToken?.symbol}(${toToken?.address})`);
+            // 这里调用 swap 时传 token.address
         }
     };
 
@@ -47,16 +58,21 @@ export default function SwapPage() {
                             className="flex-1 border rounded p-2"
                         />
                         <select
-                            value={fromToken}
-                            onChange={(e) => setFromToken(e.target.value)}
+                            value={fromToken?.symbol || ''}
+                            onChange={(e) => {
+                                const selected: Token | undefined = availableTokens.find(t => t.symbol === e.target.value);
+                                if (selected) setFromToken(selected);
+                            }}
                             className="border rounded p-2"
                         >
-                            <option value="ETH">ETH</option>
-                            <option value="USDC">USDC</option>
-                            <option value="DAI">DAI</option>
+                            {availableTokens.map(token => (
+                                <option key={token.address} value={token.symbol}>{token.symbol}</option>
+                            ))}
                         </select>
                     </div>
-                    <div className="text-xs text-gray-500">余额: {balance} {fromToken}</div>
+                    <div className="text-xs text-gray-500 text-right">
+                        余额: {isFetchingFromBalance ? '加载中...' : fromTokenBalance ? `${Math.floor(parseFloat(formatUnits(fromTokenBalance.value, fromToken?.decimals || 18)) * 1e6) / 1e6}` : '--'}
+                    </div>
                 </div>
 
                 {/* Buy Token */}
@@ -64,24 +80,30 @@ export default function SwapPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">购买代币</label>
                     <div className="flex space-x-2">
                         <input
-                            type="text"
+                            type="number"
                             value={toAmount}
-                            readOnly
-                            placeholder="根据价格自动计算"
-                            className="flex-1 border rounded p-2 bg-gray-100"
+                            onChange={(e) => setToAmount(e.target.value)}
+                            placeholder="得到数量"
+                            className="flex-1 border rounded p-2"
                         />
                         <select
-                            value={toToken}
-                            onChange={(e) => setToToken(e.target.value)}
+                            value={toToken?.symbol || ''}
+                            onChange={(e) => {
+                                const selected: Token | undefined = availableTokens.find(t => t.symbol === e.target.value);
+                                if (selected) setToToken(selected);
+                            }}
                             className="border rounded p-2"
                         >
-                            <option value="RPL">RPL</option>
-                            <option value="ETH">ETH</option>
-                            <option value="USDC">USDC</option>
-                            <option value="DAI">DAI</option>
+                            {availableTokens
+                                .filter(token => token.address !== fromToken?.address)
+                                .map(token => (
+                                    <option key={token.address} value={token.symbol}>{token.symbol}</option>
+                                ))}
                         </select>
                     </div>
-                    <div className="text-xs text-gray-500">当前价格: 1 {fromToken} = {price} {toToken}</div>
+                    <div className="text-xs text-gray-500 text-right">
+                        余额: {isFetchingToBalance ? '加载中...' : toTokenBalance ? `${Math.floor(parseFloat(formatUnits(toTokenBalance.value, toToken?.decimals || 18)) * 1e6) / 1e6}` : '--'}
+                    </div>
                 </div>
 
                 {/* Info Rows */}
