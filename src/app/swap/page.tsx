@@ -1,17 +1,49 @@
 'use client';
 
+import { useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useBalance } from 'wagmi';
-import { Button } from '@/components/ui/button';
-import { availableTokens, useSwapStore } from '@/store/swapStore';
 import { Token } from '@uniswap/sdk-core';
+
 import { formatUnits } from 'viem';
+import { Button } from '@/components/ui/button';
+import { availableTokens, useSwapStore } from '@/stores/swapStore';
+import { useSwapPriceV3 } from '@/hooks/useSwapPriceV3';
 
 export default function SwapPage() {
     const { address, isConnected } = useAccount();
     const state = useSwapStore();
-    const { fromToken, toToken, slippage, gasFee, fromAmount, toAmount } = state;
-    const { setFromToken, setToToken, setFromAmount, setToAmount } = state;
+    const { fromToken, toToken, slippage, gasFee, fromAmount, toAmount, inputSource } = state;
+    const { setFromToken, setToToken, setFromAmount, setToAmount, setInputSource } = state;
+
+    // eth的话需要转换为weth去获取价格
+    if (fromToken?.symbol === 'ETH') {
+        setFromToken(new Token(1, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 18, 'WETH', 'Wrapped Ether') as Token & { address: `0x${string}` });
+    }
+
+    if (toToken?.symbol === 'ETH') {
+        setToToken(new Token(1, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 18, 'WETH', 'Wrapped Ether') as Token & { address: `0x${string}` });
+    }
+
+    // 计算价格
+    const { price, loading: priceLoading } = useSwapPriceV3(
+        fromToken,
+        toToken,
+        fromAmount,
+        inputSource
+    );
+
+    // 根据价格变化自动填充 toAmount 或 fromAmount
+
+    useEffect(() => {
+        if (!priceLoading && price) {
+            if (inputSource === 'from') {
+                setToAmount((Math.floor(parseFloat(fromAmount || '0') * parseFloat(price) * 1e6) / 1e6).toString());
+            } else if (inputSource === 'to') {
+                setFromAmount((Math.floor(parseFloat(toAmount || '0') / parseFloat(price) * 1e6) / 1e6).toString());
+            }
+        }
+    }, [price, priceLoading, inputSource]);
 
     // 获取出售代币余额
     const { data: fromTokenBalance, isFetching: isFetchingFromBalance } = useBalance({
@@ -53,7 +85,10 @@ export default function SwapPage() {
                         <input
                             type="number"
                             value={fromAmount}
-                            onChange={(e) => setFromAmount(e.target.value)}
+                            onChange={(e) => {
+                                setInputSource('from'); // 记录“用户改了 from”
+                                setFromAmount(e.target.value);
+                            }}
                             placeholder="输入数量"
                             className="flex-1 border rounded p-2"
                         />
@@ -82,7 +117,10 @@ export default function SwapPage() {
                         <input
                             type="number"
                             value={toAmount}
-                            onChange={(e) => setToAmount(e.target.value)}
+                            onChange={(e) => {
+                                setInputSource('to'); // 记录“用户改了 to”
+                                setToAmount(e.target.value);
+                            }}
                             placeholder="得到数量"
                             className="flex-1 border rounded p-2"
                         />
@@ -111,10 +149,6 @@ export default function SwapPage() {
                     <div className="flex justify-between">
                         <span>Gas 费用:</span>
                         <span>{gasFee} ETH</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>订单路由:</span>
-                        <span>Uniswap Router</span>
                     </div>
                     <div className="flex justify-between">
                         <span>价格影响:</span>
