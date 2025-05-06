@@ -29,6 +29,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      jsbi:
+        specifier: 3.2.5
+        version: 3.2.5
       lucide-react:
         specifier: ^0.507.0
         version: 0.507.0(react@19.1.0)

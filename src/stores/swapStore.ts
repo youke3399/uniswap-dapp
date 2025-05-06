@@ -12,18 +12,18 @@ interface SwapState {
   toBalance: bigint;
   fromAmount: string;
   toAmount: string;
+  amount: string;
   inputSource: SwapDirection;
-  slippage: string;
-  gasFee: string;
+
   setFromToken: (token: Token) => void;
   setToToken: (token: Token) => void;
   setFromAmount: (fromAmount: string) => void;
   setToAmount: (toAmount: string) => void;
+  setAmount: (amount: string) => void;
   setInputSource: (inputSource: SwapDirection) => void;
   setFromBalance: (balance: bigint) => void;
   setToBalance: (balance: bigint) => void;
-  setSlippage: (slippage: string) => void;
-  setGasFee: (gasFee: string) => void;
+
 }
 
 // 交易usdt usdc dai等稳定币，交易weth直接用uniswap官网界面，无需界面使用费0.25%
@@ -43,9 +43,9 @@ export const useSwapStore = create<SwapState>((set) => ({
   toBalance: BigInt(0),
   fromAmount: '',
   toAmount: '',
+  amount:'',
   inputSource: 'from',
-  slippage: '0.5',
-  gasFee: '',
+
   setFromToken: (token) =>
     set((state) => ({
       ...state,
@@ -60,9 +60,9 @@ export const useSwapStore = create<SwapState>((set) => ({
     })),
   setFromAmount: (fromAmount) => set((state) => ({ ...state, fromAmount })),
   setToAmount: (toAmount) => set((state) => ({ ...state, toAmount })),
+  setAmount: (amount) => set((state) => ({ ...state, amount })),
   setInputSource: (inputSource: SwapDirection) => set((state) => ({ ...state, inputSource })),
   setToBalance: (toBalance) => set((state) => ({ ...state, toBalance })),
   setFromBalance: (fromBalance) => set((state) => ({ ...state, fromBalance })),
-  setSlippage: (slippage) => set((state) => ({ ...state, slippage })),
-  setGasFee: (gasFee) => set((state) => ({ ...state, gasFee })),
+
 }));
