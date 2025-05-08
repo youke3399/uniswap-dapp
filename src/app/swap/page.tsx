@@ -1,20 +1,37 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useBalance } from 'wagmi';
+import { useAccount, useBalance, useWalletClient, usePublicClient } from 'wagmi';
 import { Token } from '@uniswap/sdk-core';
 
 import { formatUnits } from 'viem';
 import { Button } from '@/components/ui/button';
 import { availableTokens, useSwapStore } from '@/stores/swapStore';
 import { useSwapPriceV3 } from '@/hooks/useSwapPriceV3';
+import { usePermit2 } from '@/hooks/usePermit2';
 
 export default function SwapPage() {
     const { address, isConnected } = useAccount();
+    const { data: walletClient } = useWalletClient();
+    const publicClient = usePublicClient();
+
+    if (!publicClient) {
+        console.error('publicClient 未初始化');
+        return <div>加载中...</div>;
+    }
+
     const state = useSwapStore();
-    const { fromToken, toToken, fromAmount, toAmount, amount, inputSource } = state;
-    const { setFromToken, setToToken, setFromAmount, setToAmount, setAmount, setInputSource } = state;
+    const { fromToken, toToken, fromAmount, toAmount, amount, inputSource, approveStatus, errorMessage } = state;
+    const { setFromToken, setToToken, setFromAmount, setToAmount, setAmount, setInputSource, setApproveStatus, setErrorMessage } = state;
+
+    const [allowance, setAllowance] = useState<{
+        amount: bigint;
+        expiration: number;
+        nonce: number;
+    } | null>(null);
+
+    const { checkAllowance, getPermitSignature } = usePermit2();
 
     // 计算价格
     const { price, slippagePrice, gasPrice, priceImpact, loading: priceLoading } = useSwapPriceV3(
@@ -49,12 +66,81 @@ export default function SwapPage() {
         query: { enabled: Boolean(address && toToken?.address) },
     });
 
-    const handleSwap = () => {
+    useEffect(() => {
+        const fetchAllowance = async () => {
+            if (address && fromToken) {
+                try {
+                    const result = await checkAllowance(address, fromToken);
+                    setAllowance(result);
+
+                    if (result.amount >= BigInt(1e30)) {
+                        setApproveStatus('done');
+                    } else {
+                        setApproveStatus('idle');
+                    }
+                } catch (err: any) {
+                    console.error('检查授权失败:', err);
+                    setErrorMessage(err.message || '检查授权失败');
+                }
+            }
+        };
+        fetchAllowance();
+    }, [address, fromToken, checkAllowance]);
+
+    const handleApprove = async () => {
+        if (!fromToken || !address || !walletClient) {
+            setErrorMessage('未选择代币或未连接钱包');
+            return;
+        }
+        try {
+            setApproveStatus('pending');
+            setErrorMessage(null);
+
+            // 获取签名
+            if (!allowance) throw new Error('缺少授权信息');
+            const permitData = await getPermitSignature({
+                token: fromToken,
+                owner: address,
+                nonce: allowance.nonce,
+            });
+
+            console.log('Permit 签名完成:', permitData.signature);
+            alert('授权签名完成，可以用于后续交易');
+            setApproveStatus('done');
+        } catch (err: any) {
+            console.error(err);
+            setErrorMessage(err.message || '授权失败');
+            setApproveStatus('idle');
+        }
+    };
+
+    const handleSwap = async () => {
         if (!isConnected) {
             alert('请先连接钱包');
-        } else {
+            return;
+        }
+        if (!fromToken || !address || !publicClient) {
+            alert('未选择代币或未连接钱包');
+            return;
+        }
+
+        // 检查授权是否足够
+        try {
+            setApproveStatus('pending');
+            const allowance = await checkAllowance(address, fromToken);
+
+            if (allowance.amount < BigInt(1e30)) {
+                alert('授权额度不足，请先授权');
+                setApproveStatus('idle');
+                return;
+            }
+
+            setApproveStatus('done');
+            // TODO: 在这里执行实际的交易逻辑
             alert(`执行 Swap: ${fromAmount} ${fromToken?.symbol}(${fromToken?.address}) -> ${toToken?.symbol}(${toToken?.address})`);
-            // 这里调用 swap 时传 token.address
+        } catch (err: any) {
+            console.error(err);
+            setErrorMessage(err.message || '检查授权失败');
         }
     };
 
@@ -136,6 +222,20 @@ export default function SwapPage() {
                     </div>
                 </div>
 
+                {allowance !== null && (
+                    <div className="text-xs text-gray-500 text-right">
+                        授权额度: {Number(allowance.amount) / 10 ** (fromToken?.decimals || 18)}
+                    </div>
+                )}
+
+                <Button
+                    onClick={handleApprove}
+                    disabled={approveStatus === 'pending' || !isConnected}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600"
+                >
+                    {approveStatus === 'pending' ? '授权中...' : '授权 Permit2'}
+                </Button>
+
                 {/* Info Rows */}
                 <div className="space-y-2 text-sm text-gray-600">
                     <div className="flex justify-between">
@@ -156,12 +256,16 @@ export default function SwapPage() {
                 <Button
                     onClick={handleSwap}
                     className="w-full"
+                    disabled={priceLoading || approveStatus === 'pending'}
                 >
                     {priceLoading ? '获取价格中...'
-                        :
-                        isConnected ? '交换' : '连接钱包'}
+                        : isConnected ? '交换' : '连接钱包'}
 
                 </Button>
+
+                {errorMessage && (
+                    <div className="text-red-500 text-sm mt-2">{errorMessage}</div>
+                )}
             </div>
         </main>
     );

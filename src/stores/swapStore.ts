@@ -14,6 +14,9 @@ interface SwapState {
   toAmount: string;
   amount: string;
   inputSource: SwapDirection;
+  approveStatus: 'idle' | 'pending' | 'done';
+  swapStatus: 'idle' | 'pending' | 'done';
+  errorMessage: string | null;
 
   setFromToken: (token: Token) => void;
   setToToken: (token: Token) => void;
@@ -23,6 +26,9 @@ interface SwapState {
   setInputSource: (inputSource: SwapDirection) => void;
   setFromBalance: (balance: bigint) => void;
   setToBalance: (balance: bigint) => void;
+  setApproveStatus: (status: 'idle' | 'pending' | 'done') => void;
+  setSwapStatus: (status: 'idle' | 'pending' | 'done') => void;
+  setErrorMessage: (message: string | null) => void;
 
 }
 
@@ -45,6 +51,10 @@ export const useSwapStore = create<SwapState>((set) => ({
   toAmount: '',
   amount:'',
   inputSource: 'from',
+  approveStatus: 'idle',
+  swapStatus: 'idle',
+  errorMessage: null,
+  
 
   setFromToken: (token) =>
     set((state) => ({
@@ -64,5 +74,8 @@ export const useSwapStore = create<SwapState>((set) => ({
   setInputSource: (inputSource: SwapDirection) => set((state) => ({ ...state, inputSource })),
   setToBalance: (toBalance) => set((state) => ({ ...state, toBalance })),
   setFromBalance: (fromBalance) => set((state) => ({ ...state, fromBalance })),
+  setApproveStatus: (status) => set((state) => ({ ...state, approveStatus: status })),
+  setSwapStatus: (status) => set((state) => ({ ...state, swapStatus: status })),
+  setErrorMessage: (message) => set((state) => ({ ...state, errorMessage: message })),
 
 }));

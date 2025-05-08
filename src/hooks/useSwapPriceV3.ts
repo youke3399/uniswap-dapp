@@ -1,19 +1,11 @@
 import { useEffect, useState } from 'react';
 import JSBI from 'jsbi';
-import { usePublicClient } from 'wagmi';
-import { encodeFunctionData, decodeFunctionResult, parseAbi } from 'viem';
-import { parseUnits, formatUnits, formatGwei } from 'viem';
+import { usePublicClient, useChainId } from 'wagmi';
+import { encodeFunctionData, decodeFunctionResult, parseUnits, formatUnits, formatGwei } from 'viem';
 import { Token } from '@uniswap/sdk-core';
 import { tickToPrice, TickMath } from '@uniswap/v3-sdk';
 import { SwapDirection } from '@/types';
-
-
-const QUOTER_ADDRESS = '0x5e55C9e631FAE526cd4B0526C4818D6e0a9eF0e3'; // Quoter contract address
-
-const quoterAbi = parseAbi([
-    'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) view returns (uint256 amountReceived, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
-    'function quoteExactOutputSingle((address tokenIn, address tokenOut, uint256 amount, uint24 fee, uint160 sqrtPriceLimitX96)) view returns (uint256 amountIn, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)'
-]);
+import { getQuoterAddress, quoterAbi } from '@/contracts';
 
 export function useSwapPriceV3(
     fromToken: Token & { address: `0x${string}` } | null,
@@ -27,6 +19,8 @@ export function useSwapPriceV3(
     const [loading, setLoading] = useState<boolean>(false);
     const [priceImpact, setPriceImpact] = useState<string>('');
     const client = usePublicClient();
+    const chainId = useChainId();
+    const quoterAddress = getQuoterAddress(chainId);
 
     useEffect(() => {
         const fetchPrice = async () => {
@@ -77,7 +71,7 @@ export function useSwapPriceV3(
                 }
 
                 const result = await client.call({
-                    to: QUOTER_ADDRESS,
+                    to: quoterAddress,
                     data: encodedData
                 });
 
