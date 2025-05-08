@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { availableTokens, useSwapStore } from '@/stores/swapStore';
 import { useSwapPriceV3 } from '@/hooks/useSwapPriceV3';
 import { usePermit2 } from '@/hooks/usePermit2';
+import { useUniversalRouter } from '@/hooks/useUniversalRouter';
 
 export default function SwapPage() {
     const { address, isConnected } = useAccount();
@@ -32,6 +33,7 @@ export default function SwapPage() {
     } | null>(null);
 
     const { checkAllowance, getPermitSignature } = usePermit2();
+    const { executeSwap } = useUniversalRouter();
 
     // 计算价格
     const { price, slippagePrice, gasPrice, priceImpact, loading: priceLoading } = useSwapPriceV3(
@@ -52,6 +54,20 @@ export default function SwapPage() {
         }
     }, [price, priceLoading, inputSource]);
 
+    // 新增逻辑：判断是否原生 ETH
+    const isFromNativeETH = fromToken?.symbol === 'ETH' && fromToken?.address === '0x0000000000000000000000000000000000000000';
+    const isToNativeETH = toToken?.symbol === 'ETH' && toToken?.address === '0x0000000000000000000000000000000000000000';
+
+    useEffect(() => {
+        if (isToNativeETH) {
+            const wethToken = availableTokens.find(t => t.symbol === 'WETH');
+            if (wethToken) {
+                setToToken(wethToken);
+                console.log('检测到输出为原生 ETH, 自动切换为 WETH 地址');
+            }
+        }
+    }, [toToken]);
+
     // 获取出售代币余额
     const { data: fromTokenBalance, isFetching: isFetchingFromBalance } = useBalance({
         address,
@@ -69,6 +85,12 @@ export default function SwapPage() {
     useEffect(() => {
         const fetchAllowance = async () => {
             if (address && fromToken) {
+                const isNativeETH = fromToken.address === '0x0000000000000000000000000000000000000000';
+                if (isNativeETH) {
+                    // ETH 无需授权
+                    setApproveStatus('done');
+                    return;
+                }
                 try {
                     const result = await checkAllowance(address, fromToken);
                     setAllowance(result);
@@ -92,6 +114,14 @@ export default function SwapPage() {
             setErrorMessage('未选择代币或未连接钱包');
             return;
         }
+
+        const isNativeETH = fromToken.address === '0x0000000000000000000000000000000000000000';
+        if (isNativeETH) {
+            alert('ETH 无需授权');
+            setApproveStatus('done');
+            return;
+        }
+
         try {
             setApproveStatus('pending');
             setErrorMessage(null);
@@ -115,32 +145,58 @@ export default function SwapPage() {
     };
 
     const handleSwap = async () => {
+        console.log('是否原生 ETH 输入:', isFromNativeETH);
+        console.log('是否原生 ETH 输出:', isToNativeETH);
+
         if (!isConnected) {
             alert('请先连接钱包');
             return;
         }
-        if (!fromToken || !address || !publicClient) {
+        if (!fromToken || !toToken || !address || !publicClient || !walletClient) {
             alert('未选择代币或未连接钱包');
             return;
         }
 
-        // 检查授权是否足够
-        try {
-            setApproveStatus('pending');
-            const allowance = await checkAllowance(address, fromToken);
+        const isNativeETH = fromToken.address === '0x0000000000000000000000000000000000000000';
 
-            if (allowance.amount < BigInt(1e30)) {
-                alert('授权额度不足，请先授权');
-                setApproveStatus('idle');
+        if (!isNativeETH) {
+            try {
+                setApproveStatus('pending');
+                const allowance = await checkAllowance(address, fromToken);
+
+                if (allowance.amount < BigInt(1e30)) {
+                    alert('授权额度不足，请先授权');
+                    setApproveStatus('idle');
+                    return;
+                }
+
+                setApproveStatus('done');
+            } catch (err: any) {
+                console.error(err);
+                setErrorMessage(err.message || '检查授权失败');
                 return;
             }
+        }
 
+        try {
+            const commands = '0x'; // 这里应该生成 swap 所需的指令数据
+            const inputs: `0x${string}`[] = []; // 这里应该生成 swap 所需的输入数据
+
+            setApproveStatus('pending');
+            const receipt = await executeSwap({
+                commands,
+                inputs,
+                isFromNativeETH,
+                isToNativeETH,
+            });
+
+            console.log('Swap 成功:', receipt);
+            alert('交易完成');
             setApproveStatus('done');
-            // TODO: 在这里执行实际的交易逻辑
-            alert(`执行 Swap: ${fromAmount} ${fromToken?.symbol}(${fromToken?.address}) -> ${toToken?.symbol}(${toToken?.address})`);
         } catch (err: any) {
-            console.error(err);
-            setErrorMessage(err.message || '检查授权失败');
+            console.error('Swap 失败:', err);
+            setErrorMessage(err.message || 'Swap 失败');
+            setApproveStatus('idle');
         }
     };
 
@@ -259,7 +315,7 @@ export default function SwapPage() {
                     disabled={priceLoading || approveStatus === 'pending'}
                 >
                     {priceLoading ? '获取价格中...'
-                        : isConnected ? '交换' : '连接钱包'}
+                        : isConnected ? (approveStatus === 'pending' ? '交易中...' : '交换') : '连接钱包'}
 
                 </Button>
 
