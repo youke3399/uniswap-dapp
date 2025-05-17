@@ -30,7 +30,7 @@ export function useUniversalRouter() {
 
         if (isToNativeETH) {
             // 添加解包 WETH 的指令（0x08）到 commands 末尾
-            finalCommands += '08';
+            finalCommands += '0c';
 
             // 构造 unwrap 参数
             const unwrapInput = encodeAbiParameters(
