@@ -14,6 +14,7 @@ interface SwapState {
   tradeType: TradeType;
   approveStatus: 'idle' | 'pending' | 'done';
   swapStatus: 'idle' | 'pending' | 'done';
+  swapError: string | null;
 
   setChainId: (chainId: number) => void;
   setFromToken: (token: Token | NativeCurrency) => void;
@@ -24,9 +25,10 @@ interface SwapState {
   setTradeType: (tradeType: TradeType) => void;
   setApproveStatus: (status: 'idle' | 'pending' | 'done') => void;
   setSwapStatus: (status: 'idle' | 'pending' | 'done') => void;
+  setSwapError: (msg: string | null) => void;
 }
 
-export const useSwapStore = create<SwapState>((set, get) => {
+export const useSwapStore = create<SwapState>((set) => {
   const defaultChainId = 1;
   const tokenList: ChainTokens = swapTokens[defaultChainId] ?? {};
 
@@ -43,6 +45,7 @@ export const useSwapStore = create<SwapState>((set, get) => {
     tradeType: TradeType.EXACT_INPUT,
     approveStatus: 'idle',
     swapStatus: 'idle',
+    swapError: null,
 
     setChainId: (chainId) => {
       const tokenList = swapTokens[chainId] ?? {};
@@ -56,25 +59,41 @@ export const useSwapStore = create<SwapState>((set, get) => {
 
     setFromToken: (token) => {
       set((state) => {
-        const isSame =
+        const updatedToToken =
           token instanceof Token &&
-          state.toToken instanceof Token &&
-          token.address === state.toToken.address;
+            state.toToken instanceof Token &&
+            token.address === state.toToken.address
+            ? state.availableTokens.find(
+              (t) =>
+                t instanceof Token &&
+                token instanceof Token &&
+                t.address !== token.address
+            ) ?? null
+            : state.toToken;
+
         return {
           fromToken: token,
-          toToken: isSame ? null : state.toToken,
+          toToken: updatedToToken,
         };
       });
     },
     setToToken: (token) => {
       set((state) => {
-        const isSame =
+        const updatedFromToken =
           token instanceof Token &&
-          state.fromToken instanceof Token &&
-          token.address === state.fromToken.address;
+            state.fromToken instanceof Token &&
+            token.address === state.fromToken.address
+            ? state.availableTokens.find(
+              (t) =>
+                t instanceof Token &&
+                token instanceof Token &&
+                t.address !== token.address
+            ) ?? null
+            : state.fromToken;
+
         return {
           toToken: token,
-          fromToken: isSame ? null : state.fromToken,
+          fromToken: updatedFromToken,
         };
       });
     },
@@ -86,5 +105,6 @@ export const useSwapStore = create<SwapState>((set, get) => {
     setTradeType: (tradeType) => set({ tradeType }),
     setApproveStatus: (status) => set({ approveStatus: status }),
     setSwapStatus: (status) => set({ swapStatus: status }),
+    setSwapError: (msg) => set({ swapError: msg }),
   };
 });

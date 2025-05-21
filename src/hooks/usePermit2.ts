@@ -1,124 +1,120 @@
 import { useWalletClient, usePublicClient, useChainId } from 'wagmi';
+import { providers } from 'ethers';
 import { Token } from '@uniswap/sdk-core';
 import { readContract, writeContract } from 'viem/actions';
-import { getPermit2Address, getUniversalRouterAddress, permit2Abi } from '@/contracts';
+import { UNIVERSAL_ROUTER_ADDRESS,UniversalRouterVersion} from '@uniswap/universal-router-sdk';
+import { erc20Abi } from 'viem';
+import { SignatureTransfer, AllowanceProvider,PERMIT2_ADDRESS } from '@uniswap/permit2-sdk';
 
 export function usePermit2() {
     const chainId = useChainId();
-    const permit2Address = getPermit2Address(chainId);
-    const universalRouterAddress = getUniversalRouterAddress(chainId);
+    const permit2Address = PERMIT2_ADDRESS;
+    const universalRouterAddress = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId);
     const { data: walletClient } = useWalletClient();
     const publicClient = usePublicClient();
 
-    async function checkAllowance(owner: `0x${string}`, token: Token & { address: `0x${string}` }) {
-        if (!publicClient) throw new Error('No public client available');
+    // Required for SignatureTransfer: make sure Permit2 contract is approved to spend the token
+    async function approveTokenForPermit2({
+        token,
+        account,
+        amount,
+    }: {
+        token: Token & { address: `0x${string}` };
+        account: `0x${string}`;
+        amount: bigint;
+    }) {
         if (!walletClient) throw new Error('No wallet client available');
+        if (!publicClient) throw new Error('No public client available');
 
-        const [amount, expiration, nonce] = await readContract(publicClient, {
-            address: permit2Address,
-            abi: permit2Abi,
+        // Check if Permit2 has enough allowance to transfer tokens on behalf of user
+        const allowance = await readContract(publicClient, {
+            address: token.address,
+            abi: erc20Abi,
             functionName: 'allowance',
-            args: [owner, token.address, universalRouterAddress],
-        }) as readonly [bigint, number, number];
+            args: [account, permit2Address],
+        });
 
-        return {
-            amount,
-            expiration,
-            nonce,
-        };
+        console.log('allowance:', allowance.toString());
+
+        const MAX_UINT256 = BigInt(2) ** BigInt(256) - BigInt(1);
+
+        if (allowance < amount) {
+            await writeContract(walletClient, {
+                account,
+                address: token.address,
+                abi: erc20Abi,
+                functionName: 'approve',
+                args: [permit2Address, MAX_UINT256],
+            });
+        }
     }
 
-    async function getPermitSignature({
+    async function getSignatureTransferPermit({
         token,
         owner,
-        nonce,
+        amount,
     }: {
         token: Token & { address: `0x${string}` };
         owner: `0x${string}`;
-        nonce: number;
+        amount: bigint;
     }): Promise<{
         signature: string;
         permit: {
-            token: `0x${string}`;
-            amount: bigint;
-            expiration: number;
-            nonce: number;
-            owner: `0x${string}`;
+            permitted: {
+                token: `0x${string}`;
+                amount: bigint;
+            };
             spender: `0x${string}`;
+            nonce: number;
+            deadline: number;
         };
     }> {
-        if (!walletClient) throw new Error('No wallet client available');
-        if (!chainId) throw new Error('No chainId available');
+        if (!walletClient || !chainId || !publicClient) throw new Error('Missing client');
 
-        const domain = {
-            name: 'Permit2',
-            chainId,
-            verifyingContract: permit2Address,
-        };
+        const ethersProvider = new providers.JsonRpcProvider(publicClient?.transport?.url);
 
-        const message = {
-            token: token.address,
-            amount: BigInt(10000) * BigInt(10) ** BigInt(token.decimals), // 直接授权10000个
-            expiration: Math.floor(Date.now() / 1000) + 3600 * 24 * 365, // 1 year expiry
-            nonce: Number(nonce),
-        };
+        const allowanceProvider = new AllowanceProvider(ethersProvider, permit2Address);
+        const nonce = await allowanceProvider.getNonce(token.address, owner, universalRouterAddress);
 
-        const account = walletClient.account;
-        const signTypedData = walletClient.signTypedData!;
+        const deadline = Math.floor(Date.now() / 1000) + 3600;
 
-        const signature = await signTypedData({
-            account,
-            domain,
-            types: {
-                Permit: [
-                    { name: 'token', type: 'address' },
-                    { name: 'amount', type: 'uint160' },
-                    { name: 'expiration', type: 'uint48' },
-                    { name: 'nonce', type: 'uint48' },
-                ],
+        const permit = {
+            permitted: {
+                token: token.address,
+                amount,
             },
-            primaryType: 'Permit',
-            message,
+            spender: universalRouterAddress as `0x${string}`,
+            nonce,
+            deadline,
+        };
+
+        const { domain, types, values } = SignatureTransfer.getPermitData(
+            permit,
+            permit2Address,
+            chainId
+        );
+
+        const signature = await walletClient.signTypedData({
+            account: walletClient.account,
+            domain: {
+                chainId: Number(domain.chainId),
+                name: domain.name,
+                verifyingContract: domain.verifyingContract as `0x${string}`,
+                version: domain.version,
+            },
+            types,
+            primaryType: 'PermitTransferFrom',
+            message: values as unknown as Record<string, unknown>,
         });
 
         return {
             signature,
-            permit: {
-                ...message,
-                owner,
-                spender: universalRouterAddress,
-            },
+            permit:permit,
         };
     }
 
-    async function approvePermit({
-        token,
-        amount,
-        expiration,
-        account,
-    }: {
-        token: Token & { address: `0x${string}` };
-        amount: bigint;
-        expiration: number;
-        account: `0x${string}`;
-    }) {
-        if (!walletClient) throw new Error('No wallet client available');
-        if (!chainId) throw new Error('No chainId available');
-
-        const txHash = await writeContract(walletClient, {
-            account,
-            address: permit2Address,
-            abi: permit2Abi,
-            functionName: 'approve',
-            args: [token.address, universalRouterAddress, amount, Number(expiration)],
-        });
-
-        return txHash;
-    }
-
     return {
-        checkAllowance,
-        getPermitSignature,
-        approvePermit,
+        approveTokenForPermit2,
+        getSignatureTransferPermit,
     };
 }
