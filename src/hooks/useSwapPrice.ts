@@ -124,6 +124,8 @@ export function useSwapPrice({
 
         let finalCalldata = calldata as `0x${string}`;
 
+        console.log(`[${new Date().toISOString()}] calldata:`,finalCalldata);
+
         if (permit) {
             const encodedPermit = encodeAbiParameters(
                 parseAbiParameters('address token, uint256 amount, uint256 nonce, uint256 deadline, address spender, bytes signature'),
@@ -138,6 +140,10 @@ export function useSwapPrice({
             );
             finalCalldata = `0x${encodedPermit.slice(2)}${(calldata as string).slice(2)}` as `0x${string}`;
         }
+
+        console.log(`[${new Date().toISOString()}] finalCalldata:`,finalCalldata);
+
+        console.log('to:',to);
 
         const txHash = await walletClient.sendTransaction({
             to: to as `0x${string}`,

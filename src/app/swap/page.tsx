@@ -97,7 +97,7 @@ export default function SwapPage() {
     });
 
     // Permit2 hooks
-    const {approveTokenForPermit2, getSignatureTransferPermit } = usePermit2();
+    const {approveTokenForPermit2 } = usePermit2();
 
     return (
         <main className="relative flex flex-col items-center justify-center min-h-screen bg-white p-6">
@@ -245,14 +245,14 @@ export default function SwapPage() {
                             if (approveStatus === 'done') {
                                 setSwapStatus('pending');
                                 try {
-                                    const permitData = await getSignatureTransferPermit({
+                                    /* const permitData = await getSignatureTransferPermit({
                                         token: token!,
                                         owner: address as `0x${string}`,
                                         amount: amountRaw,
-                                    });
+                                    }); */
 
                                     await executeSwap({
-                                        permit: {
+                                        /* permit: {
                                             signature: permitData.signature as `0x${string}`,
                                             permit: {
                                                 token: permitData.permit.permitted.token,
@@ -261,7 +261,7 @@ export default function SwapPage() {
                                                 nonce: permitData.permit.nonce,
                                                 spender: permitData.permit.spender,
                                             },
-                                        },
+                                        }, */
                                     });
 
                                     setSwapStatus('done');

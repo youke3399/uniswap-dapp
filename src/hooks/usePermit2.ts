@@ -5,11 +5,12 @@ import { readContract, writeContract } from 'viem/actions';
 import { UNIVERSAL_ROUTER_ADDRESS,UniversalRouterVersion} from '@uniswap/universal-router-sdk';
 import { erc20Abi } from 'viem';
 import { SignatureTransfer, AllowanceProvider,PERMIT2_ADDRESS } from '@uniswap/permit2-sdk';
+import { permit2Abi } from '@/libs/conversion';
 
 export function usePermit2() {
     const chainId = useChainId();
     const permit2Address = PERMIT2_ADDRESS;
-    const universalRouterAddress = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId);
+    const universalRouterAddress = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId) as `0x${string}`;
     const { data: walletClient } = useWalletClient();
     const publicClient = usePublicClient();
 
@@ -37,6 +38,7 @@ export function usePermit2() {
         console.log('allowance:', allowance.toString());
 
         const MAX_UINT256 = BigInt(2) ** BigInt(256) - BigInt(1);
+        const MAX_UINT160 = (2n ** 160n) - 1n;
 
         if (allowance < amount) {
             await writeContract(walletClient, {
@@ -45,6 +47,19 @@ export function usePermit2() {
                 abi: erc20Abi,
                 functionName: 'approve',
                 args: [permit2Address, MAX_UINT256],
+            });
+
+            await writeContract(walletClient, {
+                account,
+                address: permit2Address,
+                abi: permit2Abi,
+                functionName: 'approve',
+                args: [
+                    token.address,
+                    universalRouterAddress,
+                    MAX_UINT160,
+                    Math.floor(Date.now() / 1000) + 3600 * 24 * 365 // 1年
+                ],
             });
         }
     }
@@ -76,6 +91,8 @@ export function usePermit2() {
         const allowanceProvider = new AllowanceProvider(ethersProvider, permit2Address);
         const nonce = await allowanceProvider.getNonce(token.address, owner, universalRouterAddress);
 
+        console.log('nonce:', nonce.toString());
+
         const deadline = Math.floor(Date.now() / 1000) + 3600;
 
         const permit = {
@@ -106,6 +123,8 @@ export function usePermit2() {
             primaryType: 'PermitTransferFrom',
             message: values as unknown as Record<string, unknown>,
         });
+
+        console.log(`[${new Date().toISOString()}] signature:`, signature);
 
         return {
             signature,
