@@ -40,5 +40,12 @@ export const swapTokens: TokensMap = {
             'USDC',
             'USD Coin'
         ),
+        PEPE: new Token(
+            1,
+            '0x6982508145454Ce325dDbE47a25d4ec3d2311933',
+            18,
+            'PEPE',
+            'pepe'
+        ),
     },
 };
