@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import { useEffect, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -63,7 +63,7 @@ export default function SwapPage() {
   // 使用 useDebounce 替代手动防抖逻辑
   const [debouncedAmount] = useDebounce(
     tradeType === TradeType.EXACT_INPUT ? fromAmount : toAmount,
-    800
+    1000
   );
 
   // 计算价格，传入 debouncedAmount
@@ -121,25 +121,25 @@ export default function SwapPage() {
     },
   });
 
-  // Swap 辅助函数
-  function resetAfterSuccess() {
-    setFromAmount("");
-    setToAmount("");
-    setApproveStatus("idle");
-    setSwapStatus("idle");
-    setSwapError(null);
-  }
-
-  async function handleNativeSwap() {
+  async function doneSwap() {
     setSwapStatus("pending");
     try {
       await executeSwap();
+      setFromAmount("");
+      setToAmount("");
+      setApproveStatus("idle");
       setSwapStatus("idle");
+      setSwapError(null);
     } catch (err) {
-      console.error("ETH Swap Error", err);
-      setSwapError("ETH 交换失败，请重试");
+      console.error("交易失败", err);
+      setSwapError("交易失败，请重试");
+      setApproveStatus("idle");
       setSwapStatus("idle");
     }
+  }
+
+  async function handleNativeSwap() {
+    await doneSwap();
   }
 
   async function handleTokenSwap(
@@ -165,16 +165,7 @@ export default function SwapPage() {
     }
     // 审查完成后：执行 permit 签名和交易
     if (approveStatus === "done") {
-      setSwapStatus("pending");
-      try {
-        await executeSwap();
-        resetAfterSuccess();
-      } catch (err) {
-        console.error("交易失败", err);
-        setSwapError("交易失败，请重试");
-        setApproveStatus("idle");
-        setSwapStatus("idle");
-      }
+      await doneSwap();
     }
   }
 
@@ -208,7 +199,10 @@ export default function SwapPage() {
     !toToken ||
     (fromToken && toToken && fromToken.symbol === toToken.symbol) ||
     !fromAmount ||
-    Number(fromAmount) <= 0;
+    Number(fromAmount) <= 0 ||
+    (fromTokenBalance &&
+      Number(fromAmount) >
+        Number(formatBalance(formatUnits(fromTokenBalance.value, fromToken?.decimals || 18))));
 
   let swapButtonText = "";
   if (priceLoading) {
@@ -219,6 +213,12 @@ export default function SwapPage() {
     swapButtonText = fromToken && toToken ? "加载中..." : "请选择代币";
   } else if (!fromAmount || Number(fromAmount) <= 0) {
     swapButtonText = "请输入数量";
+  } else if (
+    fromTokenBalance &&
+    Number(fromAmount) >
+      Number(formatBalance(formatUnits(fromTokenBalance.value, fromToken?.decimals || 18)))
+  ) {
+    swapButtonText = "余额不足";
   } else if (approveStatus === "pending") {
     swapButtonText = "授权中...";
   } else if (approveStatus === "done" && swapStatus === "idle") {
@@ -238,7 +238,9 @@ export default function SwapPage() {
         <ConnectButton />
       </div>
 
-      <h1 className="text-2xl font-bold mb-6 text-gray-800 w-full text-center">交易</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gray-800 w-full text-center">
+        交易
+      </h1>
 
       <div className="w-full sm:w-[480px] bg-white rounded-lg shadow-lg p-6 space-y-6">
         <div className="flex flex-col gap-y-3 text-gray-800">
